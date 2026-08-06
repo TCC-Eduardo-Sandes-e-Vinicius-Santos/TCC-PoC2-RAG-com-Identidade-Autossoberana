@@ -1,0 +1,1 @@
+# TCC-PoC2-RAG-com-Identidade-Autossoberana
