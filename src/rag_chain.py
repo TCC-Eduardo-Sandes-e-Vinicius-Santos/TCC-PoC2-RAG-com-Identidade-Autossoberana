@@ -251,7 +251,7 @@ class SecureRAG:
             return False
             
         # Quebrar em pedaços menores (Chunks)
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=400)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=6000, chunk_overlap=400)
         chunks = text_splitter.split_documents(documents)
         
         # Criar e persistir o banco vetorial
@@ -264,25 +264,37 @@ class SecureRAG:
         logger.info("Ingestão concluída com sucesso.")
         return True
 
-    def _verify_consent(self, did_user, signature, consent_payload):
+    def _verify_consent(self, did_user, public_key, signature, consent_payload):
+        from crypto_did import CryptoDID 
+        
         logger.info(f"Verificando permissões para o DID: {did_user}")
         
         if not signature:
-            logger.error("Falha: Assinatura ausente ou inválida.")
+            logger.error("Falha: Assinatura ausente.")
             return False
             
         allow_rag = consent_payload.get("allow_rag", False)
         
         if not allow_rag:
-            logger.warning("Bloqueio de Privacidade: A assinatura é válida, mas o usuário NÃO autorizou o uso do RAG.")
+            logger.warning("Bloqueio de Privacidade: O usuário NÃO autorizou o uso do RAG.")
+            return False
+
+        is_valid = CryptoDID.verify_signature(
+            public_key_b64=public_key,
+            payload=consent_payload,
+            signature_b64=signature
+        )
+        
+        if not is_valid:
+            logger.error("Acesso Negado: A assinatura não é válida ou o termo foi adulterado.")
             return False
             
-        logger.info("Sucesso: Assinatura válida e permissão concedida pelo usuário.")
+        logger.info("Sucesso: Assinatura criptográfica válida e permissão concedida.")
         return True
 
-    def query_with_consent(self, question, did_user, signature, consent_payload):
+    def query_with_consent(self, question, did_user, public_key, signature, consent_payload):
         # TRAVA LÓGICA DE PRIVACIDADE
-        if not self._verify_consent(did_user, signature, consent_payload):
+        if not self._verify_consent(did_user, public_key, signature, consent_payload):
             return "Acesso Negado: Falha na validação do consentimento criptográfico. O acesso aos seus dados foi bloqueado."
 
         # Prepara o Banco Vetorial e o Retriever
@@ -298,7 +310,7 @@ class SecureRAG:
 
         retriever = self.vector_store.as_retriever(
             search_type="mmr", 
-            search_kwargs={"k": 10, "fetch_k": 50}
+            search_kwargs={"k": 30, "fetch_k": 150}
         )
 
         # Função auxiliar para extrair o texto e imprimir o log no terminal

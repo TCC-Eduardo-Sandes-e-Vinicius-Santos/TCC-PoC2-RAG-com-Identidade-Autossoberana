@@ -4,7 +4,10 @@ import sys
 import json
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from rag_chain import SecureRAG
+from crypto_did import CryptoDID
+from biometric_verifier import BiometricVerifier, BiometricCaptureError, AgeAnalysisError
 
 st.set_page_config(page_title="Assistente IA - Autossoberano", layout="wide")
 
@@ -18,115 +21,124 @@ rag_system = initialize_rag()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "crypto" not in st.session_state:
+    st.session_state.crypto = CryptoDID()
+if "identidade" not in st.session_state:
+    st.session_state.identidade = None
+if "age_claim" not in st.session_state:
+    st.session_state.age_claim = None
+if "signature" not in st.session_state:
+    st.session_state.signature = None
 
 with st.sidebar:
     st.header("Identidade Autossoberana")
     st.caption("Controle local das suas credenciais.")
     
-    did_user = st.text_input("Seu DID (Gerado Localmente)", value="did:poc:12345", disabled=True)
-    signature = st.text_input("Assinatura Criptográfica", value="hash_assinatura_valida")
-    
-    st.divider()
-    
-    allow_rag = st.toggle("Autorizar IA a ler meus documentos", value=True)
-    
-    st.divider()
-    
-    st.info(
-        "**Transparência e Privacidade:**\n"
-        "Todo o processamento é executado localmente (Edge Computing). "
-        "Suas imagens não são salvas e o modelo de linguagem não acessa a internet."
-    )
-    
-    st.divider()
-    st.subheader("Gerenciar Documentos")
-    
-    with st.form("upload_form", clear_on_submit=True):
-        uploaded_files = st.file_uploader(
-            "Adicione novos documentos à base da IA", 
-            type=["pdf", "txt"], 
-            accept_multiple_files=True
+    # 1. Geração da Identidade (US01)
+    if not st.session_state.identidade:
+        if st.button("Gerar Identidade (DID)", type="primary", use_container_width=True):
+            with st.spinner("Gerando chaves Ed25519..."):
+                st.session_state.identidade = st.session_state.crypto.generate_identity()
+            st.rerun()
+    else:
+        st.success("Identidade Gerada com Sucesso!")
+        did_user = st.text_input("Seu DID", value=st.session_state.identidade["did"], disabled=True)
+        pub_key = st.text_input("Chave Pública (Base64)", value=st.session_state.identidade["public_key"], disabled=True)
+        
+        # 2. Verificação Biométrica (US02)
+        st.divider()
+        st.subheader("Verificação Etária")
+        
+        if not st.session_state.age_claim:
+            st.info("A IA só será liberada após a comprovação de maioridade.")
+            if st.button("Comprovar Maioridade (Webcam)", use_container_width=True):
+                with st.spinner("Ligando câmera e analisando rosto..."):
+                    try:
+                        verifier = BiometricVerifier()
+                        claim = verifier.verify_age(did_subject=did_user)
+                        
+                        if claim.is_adult:
+                            st.session_state.age_claim = claim.to_dict()
+                            st.rerun()
+                        else:
+                            st.error("Acesso Negado: Sistema restrito para maiores de 18 anos.")
+                    except (BiometricCaptureError, AgeAnalysisError) as e:
+                        st.error(f"Erro: {e}")
+        else:
+            st.success(f"Maioridade Confirmada! (Idade est. {st.session_state.age_claim['estimated_age']} anos)")
+
+        # 3. Permissões e Assinatura (US03)
+        st.divider()
+        allow_rag = st.toggle("Autorizar IA a ler meus documentos", value=True)
+        
+        # Assina o consentimento dinamicamente
+        consent_payload = {"allow_rag": allow_rag, "did": did_user}
+        st.session_state.signature = st.session_state.crypto.sign_payload(consent_payload)
+        
+        st.text_input("Sua Assinatura Criptográfica (Consentimento)", value=st.session_state.signature, disabled=True)
+        
+        st.divider()
+        st.info(
+            "**Transparência e Privacidade:**\n"
+            "Todo o processamento é executado localmente (Edge Computing). "
+            "Suas imagens não são salvas e o modelo de linguagem não acessa a internet."
         )
         
-        submitted = st.form_submit_button("Salvar e Processar Arquivos")
-
-    if submitted:
-        if uploaded_files:
-            with st.spinner("Salvando no disco e vetorizando (Isso pode demorar)..."):
-                os.makedirs("data/documentos", exist_ok=True)
-                for file in uploaded_files:
-                    file_path = os.path.join("data/documentos", file.name)
-                    with open(file_path, "wb") as f:
-                        f.write(file.getbuffer()) 
-                
-                rag_system.ingest_documents(force_update=True)
-                st.success("Arquivos salvos e IA atualizada com sucesso!")
-        else:
-            st.warning("Por favor, selecione pelo menos um arquivo antes de salvar.")
-
-    st.write("---")
-
-    st.caption("Se você moveu arquivos manualmente para a pasta:")
-    if st.button("Sincronizar Pasta Local"):
-        with st.spinner("Lendo a pasta e recriando a base vetorial..."):
-            rag_system.ingest_documents(force_update=True)
-            st.success("Base de dados sincronizada com a pasta local!")
-
-
-    st.divider()
-    st.subheader("Exportar Identidade")
-
-    # Construção do JSON
-    identidade_json = {
-        "type": ["VerifiableCredential", "IdentityCredential"],
-        "issuer": "did:poc:sistema_local_tcc",
-        "issuanceDate": "2026-08-12T12:00:00Z", 
-        "credentialSubject": {
-            "id": did_user,
-            "alegacoes": {
-                "maior_de_idade": True 
+        st.divider()
+        st.subheader("Exportar Identidade")
+        
+        # Construção do JSON
+        identidade_json = {
+            "type": ["VerifiableCredential", "IdentityCredential"],
+            "issuer": "did:poc:sistema_local_tcc",
+            "issuanceDate": "2026-08-12T12:00:00Z", 
+            "credentialSubject": {
+                "id": did_user,
+                "public_key": st.session_state.identidade["public_key"],
+                "alegacoes": st.session_state.age_claim,
+                "permissoes": consent_payload
             },
-            "permissoes": {
-                "allow_rag": allow_rag
+            "proof": {
+                "type": "Ed25519Signature2018",
+                "signatureValue": st.session_state.signature
             }
-        },
-        "proof": {
-            "type": "Ed25519Signature2018",
-            "signatureValue": signature
         }
-    }
-
-    json_string = json.dumps(identidade_json, indent=4)
-
-    st.download_button(
-        label="Baixar Identidade Digital (.json)",
-        file_name="minha_identidade_autossoberana.json",
-        mime="application/json",
-        data=json_string
-    )
+        json_string = json.dumps(identidade_json, indent=4)
+        st.download_button(
+            label="Baixar Identidade Digital (.json)",
+            file_name="minha_identidade_autossoberana.json",
+            mime="application/json",
+            data=json_string,
+            use_container_width=True
+        )
 
 st.title("Assistente Pessoal Offline")
-st.markdown("Interaja com seus arquivos locais. O acesso da IA é condicionado ao seu consentimento na barra lateral.")
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-if prompt := st.chat_input("Pergunte algo sobre seus documentos..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    consent_payload = {"allow_rag": allow_rag}
-
-    with st.chat_message("assistant"):
-        with st.spinner("Validando consentimento e gerando resposta (Isso pode levar alguns segundos)..."):
-            resposta = rag_system.query_with_consent(
-                question=prompt,
-                did_user=did_user,
-                signature=signature, 
-                consent_payload=consent_payload 
-            )
-            st.markdown(resposta)
+if not st.session_state.identidade or not st.session_state.age_claim:
+    st.warning("Gere a identidade e faça a verificação etária na barra lateral para liberar o acesso ao assistente.")
+else:
+    st.markdown("Interaja com seus arquivos locais. O acesso da IA é condicionado ao seu consentimento na barra lateral.")
     
-    st.session_state.messages.append({"role": "assistant", "content": resposta})
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("Pergunte algo sobre seus documentos..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        consent_payload = {"allow_rag": allow_rag, "did": st.session_state.identidade["did"]}
+
+        with st.chat_message("assistant"):
+            with st.spinner("Validando consentimento e gerando resposta (Isso pode levar alguns segundos)..."):
+                resposta = rag_system.query_with_consent(
+                    question=prompt,
+                    did_user=st.session_state.identidade["did"],
+                    public_key=st.session_state.identidade["public_key"],
+                    signature=st.session_state.signature, 
+                    consent_payload=consent_payload 
+                )
+                st.markdown(resposta)
+        
+        st.session_state.messages.append({"role": "assistant", "content": resposta})
