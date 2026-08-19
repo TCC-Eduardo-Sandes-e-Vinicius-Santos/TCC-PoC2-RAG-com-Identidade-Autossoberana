@@ -3,6 +3,12 @@ import os
 import sys
 import json
 
+os.environ["USE_TF"] = "0"
+os.environ["USE_TORCH"] = "1"
+
+__import__('pysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from rag_chain import SecureRAG
@@ -46,24 +52,37 @@ with st.sidebar:
         pub_key = st.text_input("Chave Pública (Base64)", value=st.session_state.identidade["public_key"], disabled=True)
         
         # 2. Verificação Biométrica (US02)
+        # 2. Verificação Biométrica (US02)
         st.divider()
         st.subheader("Verificação Etária")
         
         if not st.session_state.age_claim:
             st.info("A IA só será liberada após a comprovação de maioridade.")
-            if st.button("Comprovar Maioridade (Webcam)", use_container_width=True):
-                with st.spinner("Ligando câmera e analisando rosto..."):
+            
+            # Substituímos o botão do OpenCV pelo widget nativo do navegador
+            picture = st.camera_input("Tire uma foto para comprovar maioridade")
+            
+            if picture is not None:
+                with st.spinner("Analisando rosto..."):
                     try:
+                        import cv2
+                        import numpy as np
+                        
+                        # Converte a foto do navegador para o formato array na memória (sem salvar no disco)
+                        bytes_data = picture.getvalue()
+                        cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
+                        
                         verifier = BiometricVerifier()
-                        claim = verifier.verify_age(did_subject=did_user)
+                        # Chama o nosso novo método que lê a foto da memória
+                        claim = verifier.verify_age_from_array(image_array=cv2_img, did_subject=did_user)
                         
                         if claim.is_adult:
                             st.session_state.age_claim = claim.to_dict()
                             st.rerun()
                         else:
                             st.error("Acesso Negado: Sistema restrito para maiores de 18 anos.")
-                    except (BiometricCaptureError, AgeAnalysisError) as e:
-                        st.error(f"Erro: {e}")
+                    except AgeAnalysisError as e:
+                        st.error(f"Rosto não detectado ou erro na leitura: {e}")
         else:
             st.success(f"Maioridade Confirmada! (Idade est. {st.session_state.age_claim['estimated_age']} anos)")
 

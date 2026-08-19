@@ -1,3 +1,4 @@
+# APP
 streamlit==1.33.0
 langchain==0.1.16
 langchain-community==0.0.34
@@ -8,5 +9,17 @@ pypdf==4.2.0
 rank-bm25==0.2.2
 opencv-python==4.9.0.80
 deepface==0.0.92
-tf-keras==2.16.0
-cryptography
+cryptography==42.0.8
+
+# TENSORFLOW
+tensorflow==2.13.1
+keras==2.13.1
+
+# GEN
+pysqlite3-binary==0.5.2.post3
+posthog<3.0.0
+typing-extensions>=4.10.0
+packaging<24.0
+protobuf>=5.0
+wrapt<2.0.0
+tokenizers<0.21
