@@ -6,8 +6,9 @@ import json
 os.environ["USE_TF"] = "0"
 os.environ["USE_TORCH"] = "1"
 
-__import__('pysqlite3')
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+if sys.platform == "linux":
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 

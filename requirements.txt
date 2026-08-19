@@ -12,14 +12,14 @@ deepface==0.0.92
 cryptography==42.0.8
 
 # TENSORFLOW
-tensorflow==2.13.1
+tensorflow==2.13.0
 keras==2.13.1
 
 # GEN
-pysqlite3-binary==0.5.2.post3
+pysqlite3-binary==0.5.2.post3 ; sys_platform == 'linux'
 posthog<3.0.0
-typing-extensions>=4.10.0
+typing-extensions<4.6.0
 packaging<24.0
-protobuf>=5.0
+protobuf<5.0.0
 wrapt<2.0.0
 tokenizers<0.21
