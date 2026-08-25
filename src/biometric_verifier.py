@@ -12,10 +12,6 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 MINIMUM_AGE = 18
 
-# Erro
-AGE_SAFETY_MARGIN = 6
-
-
 class BiometricCaptureError(Exception):
     """Erro ao capturar imagem da webcam local."""
 
@@ -36,7 +32,6 @@ class AgeClaim:
     is_adult: bool
     estimated_age: int
     minimum_age_threshold: int
-    safety_margin: int
     issued_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     method: str = "deepface-local-inference"
 
@@ -47,7 +42,6 @@ class AgeClaim:
             "value": self.is_adult,
             "estimated_age": self.estimated_age,
             "minimum_age_threshold": self.minimum_age_threshold,
-            "safety_margin_applied": self.safety_margin,
             "issued_at": self.issued_at,
             "method": self.method,
         }
@@ -68,11 +62,9 @@ class BiometricVerifier:
     def __init__(
         self,
         minimum_age: int = MINIMUM_AGE,
-        safety_margin: int = AGE_SAFETY_MARGIN,
         detector_backend: str = "opencv",
     ):
         self.minimum_age = minimum_age
-        self.safety_margin = safety_margin
         self.detector_backend = detector_backend
 
     # ------------------------------------------------------------------
@@ -135,17 +127,16 @@ class BiometricVerifier:
         return int(result["age"])
 
     def _build_claim(self, estimated_age: int, did_subject: Optional[str]) -> AgeClaim:
-        is_adult = (estimated_age - self.safety_margin) >= self.minimum_age
+        is_adult = estimated_age >= self.minimum_age
         logger.info(
             f"Idade estimada: {estimated_age} anos | "
-            f"Maior de idade (com margem de segurança de {self.safety_margin} anos): {is_adult}"
+            f"Maior de idade: {is_adult}"
         )
         return AgeClaim(
             did_subject=did_subject,
             is_adult=is_adult,
             estimated_age=estimated_age,
             minimum_age_threshold=self.minimum_age,
-            safety_margin=self.safety_margin,
         )
 
     # ------------------------------------------------------------------
