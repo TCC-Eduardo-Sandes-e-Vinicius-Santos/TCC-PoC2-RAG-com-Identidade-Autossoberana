@@ -2,6 +2,11 @@ import streamlit as st
 import os
 import sys
 import json
+from rag_chain import SecureRAG
+from crypto_did import CryptoDID
+from biometric_verifier import BiometricVerifier, AgeAnalysisError
+import cv2
+import numpy as np
 
 os.environ["USE_TF"] = "0"
 os.environ["USE_TORCH"] = "1"
@@ -11,10 +16,6 @@ if sys.platform == "linux":
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from rag_chain import SecureRAG
-from crypto_did import CryptoDID
-from biometric_verifier import BiometricVerifier, BiometricCaptureError, AgeAnalysisError
 
 st.set_page_config(page_title="Assistente IA - Autossoberano", layout="wide")
 
@@ -41,10 +42,9 @@ with st.sidebar:
     st.header("Identidade Autossoberana")
     st.caption("Controle local das suas credenciais.")
     
-    # 1. Geração da Identidade (US01)
     if not st.session_state.identidade:
         if st.button("Gerar Identidade (DID)", type="primary", use_container_width=True):
-            with st.spinner("Gerando chaves Ed25519..."):
+            with st.spinner("Gerando chaves..."):
                 st.session_state.identidade = st.session_state.crypto.generate_identity()
             st.rerun()
     else:
@@ -52,29 +52,21 @@ with st.sidebar:
         did_user = st.text_input("Seu DID", value=st.session_state.identidade["did"], disabled=True)
         pub_key = st.text_input("Chave Pública (Base64)", value=st.session_state.identidade["public_key"], disabled=True)
         
-        # 2. Verificação Biométrica (US02)
-        # 2. Verificação Biométrica (US02)
         st.divider()
         st.subheader("Verificação Etária")
         
         if not st.session_state.age_claim:
             st.info("A IA só será liberada após a comprovação de maioridade.")
             
-            # Substituímos o botão do OpenCV pelo widget nativo do navegador
             picture = st.camera_input("Tire uma foto para comprovar maioridade")
             
             if picture is not None:
                 with st.spinner("Analisando rosto..."):
                     try:
-                        import cv2
-                        import numpy as np
-                        
-                        # Converte a foto do navegador para o formato array na memória (sem salvar no disco)
                         bytes_data = picture.getvalue()
                         cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
                         
                         verifier = BiometricVerifier()
-                        # Chama o nosso novo método que lê a foto da memória
                         claim = verifier.verify_age_from_array(image_array=cv2_img, did_subject=did_user)
                         
                         if claim.is_adult:
@@ -87,11 +79,9 @@ with st.sidebar:
         else:
             st.success(f"Maioridade Confirmada! (Idade est. {st.session_state.age_claim['estimated_age']} anos)")
 
-        # 3. Permissões e Assinatura (US03)
         st.divider()
         allow_rag = st.toggle("Autorizar IA a ler meus documentos", value=True)
         
-        # Assina o consentimento dinamicamente
         consent_payload = {"allow_rag": allow_rag, "did": did_user}
         st.session_state.signature = st.session_state.crypto.sign_payload(consent_payload)
         
@@ -107,7 +97,6 @@ with st.sidebar:
         st.divider()
         st.subheader("Exportar Identidade")
         
-        # Construção do JSON
         identidade_json = {
             "type": ["VerifiableCredential", "IdentityCredential"],
             "issuer": "did:poc:sistema_local_tcc",
@@ -151,7 +140,7 @@ else:
         consent_payload = {"allow_rag": allow_rag, "did": st.session_state.identidade["did"]}
 
         with st.chat_message("assistant"):
-            with st.spinner("Validando consentimento e gerando resposta (Isso pode levar alguns segundos)..."):
+            with st.spinner("Validando consentimento e gerando resposta (Isso pode levar alguns minutos)..."):
                 resposta = rag_system.query_with_consent(
                     question=prompt,
                     did_user=st.session_state.identidade["did"],

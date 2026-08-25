@@ -9,13 +9,7 @@ from cryptography.exceptions import InvalidSignature
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-
 class CryptoDID:
-    """
-    Orquestra a criação de Identidades Autossoberanas (US01) e a 
-    assinatura de consentimentos e alegações (US03/US06) de forma 100% local.
-    """
-
     def __init__(self):
         self.private_key = None
         self.public_key = None
@@ -24,12 +18,10 @@ class CryptoDID:
 
     def generate_identity(self) -> dict:
         """
-        Gera um par de chaves Ed25519 e um DID (Decentralized Identifier)
-        sem depender de servidores de terceiros ou formulários web.
+        Gera um par de chaves Ed25519 e um DID
         """
         logger.info("Gerando novo par de chaves criptográficas Ed25519...")
         
-        # Geração da chave privada
         self.private_key = ed25519.Ed25519PrivateKey.generate()
         self.public_key = self.private_key.public_key()
 
@@ -54,13 +46,11 @@ class CryptoDID:
 
     def sign_payload(self, payload: dict) -> str:
         """
-        Gera uma assinatura digital a partir de um dicionário (ex: AgeClaim 
-        ou payload de consentimento do RAG) usando a chave privada.
+        Gera uma assinatura digital a partir de um dicionário usando a chave privada.
         """
         if not self.private_key:
             raise ValueError("Identidade não inicializada. Execute generate_identity() primeiro.")
 
-        # Serialização rigorosa para garantir consistência no hash/assinatura
         payload_bytes = json.dumps(
             payload, 
             sort_keys=True, 
@@ -74,14 +64,11 @@ class CryptoDID:
     def verify_signature(public_key_b64: str, payload: dict, signature_b64: str) -> bool:
         """
         Valida se o payload foi assinado pelo dono da chave pública.
-        Usado pelo SecureRAG para validar o termo de consentimento.
         """
         try:
-            # Reconstrução da chave pública a partir da string em base64
             pub_bytes = base64.b64decode(public_key_b64)
             public_key = ed25519.Ed25519PublicKey.from_public_bytes(pub_bytes)
 
-            # Decodificação da assinatura e preparação do payload
             signature = base64.b64decode(signature_b64)
             payload_bytes = json.dumps(
                 payload, 
@@ -89,38 +76,13 @@ class CryptoDID:
                 separators=(',', ':')
             ).encode('utf-8')
 
-            # Validação criptográfica
             public_key.verify(signature, payload_bytes)
             return True
             
         except InvalidSignature:
-            logger.warning("Bloqueio de Segurança: Assinatura inválida. Dados adulterados ou chave incorreta.")
+            logger.warning("Bloqueio de Segurança: Assinatura inválida.")
             return False
         except Exception as exc:
             logger.error(f"Erro interno ao verificar a assinatura: {exc}")
             return False
 
-
-# Bloco de execução para terminal (Testes Isolados)
-if __name__ == "__main__":
-    print("--- Teste de Módulo: Criptografia e Identidade (US01 e US03) ---")
-    
-    crypto = CryptoDID()
-    identidade = crypto.generate_identity()
-    
-    print(f"\n[+] DID Criado: {identidade['did']}")
-    print(f"[+] Chave Pública: {identidade['public_key']}")
-    
-    # Simulando o Consentimento do RAG da US05
-    payload_consentimento = {"allow_rag": True, "did": identidade['did']}
-    assinatura = crypto.sign_payload(payload_consentimento)
-    print(f"\n[+] Assinatura do Consentimento:\n{assinatura}")
-    
-    # Teste de validação
-    is_valid = CryptoDID.verify_signature(
-        public_key_b64=identidade['public_key'],
-        payload=payload_consentimento,
-        signature_b64=assinatura
-    )
-    
-    print(f"\n[+] Verificação da Assinatura: {'APROVADA' if is_valid else 'REJEITADA'}")

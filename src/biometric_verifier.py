@@ -23,9 +23,8 @@ class AgeAnalysisError(Exception):
 @dataclass
 class AgeClaim:
     """
-    Alegação etária opaca, pronta para ser assinada digitalmente pelo
-    módulo `crypto_did.py`. Não contém nenhuma informação biométrica
-    (imagem, embedding facial, etc.) — apenas o resultado da verificação.
+    Alegação etária, para ser assinada 
+    digitalmente pelo módulo `crypto_did.py`.
     """
 
     did_subject: Optional[str]
@@ -53,10 +52,6 @@ class AgeClaim:
 class BiometricVerifier:
     """
     Orquestra a captura de webcam e a inferência etária local via DeepFace.
-
-    A verificação é "opaca": apenas o booleano de maioridade e a idade
-    estimada saem desta classe. A imagem em si nunca é persistida e é
-    descartada da memória logo após a inferência.
     """
 
     def __init__(
@@ -67,15 +62,9 @@ class BiometricVerifier:
         self.minimum_age = minimum_age
         self.detector_backend = detector_backend
 
-    # ------------------------------------------------------------------
-    # Captura
-    # ------------------------------------------------------------------
     def capture_frame(self, camera_index: int = 0, warmup_frames: int = 5):
         """
         Captura um único frame da webcam local usando OpenCV.
-
-        Retorna um array numpy mantido apenas em memória — em nenhum
-        momento a imagem é salva em disco (US02/US07).
         """
         import cv2  # import local: só é necessário quando de fato há captura de webcam
 
@@ -85,19 +74,15 @@ class BiometricVerifier:
 
         try:
             frame = None
-            # Descarta os primeiros frames: a maioria das webcams precisa
-            # de alguns frames para ajustar exposição/foco automáticos.
+
             for _ in range(max(warmup_frames, 1)):
                 ok, frame = cap.read()
                 if not ok:
                     raise BiometricCaptureError("Falha ao ler frame da webcam.")
             return frame
         finally:
-            cap.release()  # libera a câmera imediatamente após a captura
+            cap.release()
 
-    # ------------------------------------------------------------------
-    # Inferência
-    # ------------------------------------------------------------------
     def _run_inference(self, image: Union["object", str]) -> int:
         """
         Executa a estimativa de idade localmente via DeepFace.
@@ -116,7 +101,7 @@ class BiometricVerifier:
             raise AgeAnalysisError(
                 "Nenhum rosto detectado na imagem capturada. Tente novamente com melhor iluminação."
             ) from exc
-        except Exception as exc:  # falhas do modelo/backend não devem derrubar a aplicação
+        except Exception as exc:
             raise AgeAnalysisError(f"Falha ao executar a inferência de idade: {exc}") from exc
         finally:
             del image
@@ -139,9 +124,6 @@ class BiometricVerifier:
             minimum_age_threshold=self.minimum_age,
         )
 
-    # ------------------------------------------------------------------
-    # API pública
-    # ------------------------------------------------------------------
     def verify_age(self, did_subject: Optional[str] = None, camera_index: int = 0) -> AgeClaim:
         logger.info("Iniciando captura de imagem para verificação etária...")
         frame = self.capture_frame(camera_index=camera_index)
@@ -150,7 +132,7 @@ class BiometricVerifier:
         try:
             estimated_age = self._run_inference(frame)
         finally:
-            frame = None  # remove a última referência à imagem capturada
+            frame = None
 
         return self._build_claim(estimated_age, did_subject)
 
@@ -158,28 +140,14 @@ class BiometricVerifier:
         estimated_age = self._run_inference(image_path)
         return self._build_claim(estimated_age, did_subject)
 
-    # NOVO MÉTODO PARA A INTEGRAÇÃO COM O STREAMLIT
     def verify_age_from_array(self, image_array, did_subject: Optional[str] = None) -> AgeClaim:
         """
-        Recebe um array numpy (imagem carregada em memória via Streamlit),
-        executa a inferência local e descarta a imagem. (US02/US07)
+        Recebe um array numpy, executa a inferência local e descarta a imagem.
         """
         logger.info("Executando inferência de idade 100%% local a partir do array em memória...")
         try:
             estimated_age = self._run_inference(image_array)
         finally:
-            image_array = None  # remove a referência à imagem imediatamente
+            image_array = None
 
         return self._build_claim(estimated_age, did_subject)
-
-
-# Bloco de execução para terminal
-if __name__ == "__main__":
-    print("--- Teste de Módulo: Verificação Biométrica Etária (US02) ---")
-    verifier = BiometricVerifier()
-    try:
-        claim = verifier.verify_age(did_subject="did:poc:12345")
-        print("\nAlegação etária gerada (pronta para assinatura em crypto_did.py):\n")
-        print(claim.to_json())
-    except (BiometricCaptureError, AgeAnalysisError) as exc:
-        print(f"Erro na verificação: {exc}")
