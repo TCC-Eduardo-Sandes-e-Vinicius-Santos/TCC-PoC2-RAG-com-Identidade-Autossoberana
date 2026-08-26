@@ -2,11 +2,8 @@ import streamlit as st
 import os
 import sys
 import json
-from rag_chain import SecureRAG
-from crypto_did import CryptoDID
-from biometric_verifier import BiometricVerifier, AgeAnalysisError
-import cv2
-import numpy as np
+import base64
+import subprocess
 
 os.environ["USE_TF"] = "0"
 os.environ["USE_TORCH"] = "1"
@@ -16,6 +13,11 @@ if sys.platform == "linux":
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from rag_chain import SecureRAG
+from crypto_did import CryptoDID
+
+BIOMETRIC_WORKER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "biometric_worker.py")
 
 st.set_page_config(page_title="Assistente IA - Autossoberano", layout="wide")
 
@@ -44,7 +46,7 @@ with st.sidebar:
     
     if not st.session_state.identidade:
         if st.button("Gerar Identidade (DID)", type="primary", use_container_width=True):
-            with st.spinner("Gerando chaves..."):
+            with st.spinner("Gerando chaves Ed25519..."):
                 st.session_state.identidade = st.session_state.crypto.generate_identity()
             st.rerun()
     else:
@@ -61,21 +63,38 @@ with st.sidebar:
             picture = st.camera_input("Tire uma foto para comprovar maioridade")
             
             if picture is not None:
-                with st.spinner("Analisando rosto..."):
+                with st.spinner("Analisando rosto (processo isolado, liberado ao final)..."):
                     try:
                         bytes_data = picture.getvalue()
-                        cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
-                        
-                        verifier = BiometricVerifier()
-                        claim = verifier.verify_age_from_array(image_array=cv2_img, did_subject=did_user)
-                        
-                        if claim.is_adult:
-                            st.session_state.age_claim = claim.to_dict()
-                            st.rerun()
+                        b64_image = base64.b64encode(bytes_data).decode("utf-8")
+
+                        result = subprocess.run(
+                            [sys.executable, BIOMETRIC_WORKER_PATH, did_user],
+                            input=b64_image,
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                        )
+
+                        if result.returncode != 0 and not result.stdout.strip():
+                            st.error(f"Erro no processo de verificação biométrica: {result.stderr.strip() or 'falha desconhecida'}")
                         else:
-                            st.error("Acesso Negado: Sistema restrito para maiores de 18 anos.")
-                    except AgeAnalysisError as e:
-                        st.error(f"Rosto não detectado ou erro na leitura: {e}")
+                            output = json.loads(result.stdout.strip().splitlines()[-1])
+
+                            if output.get("ok"):
+                                claim_dict = output["claim"]
+                                if claim_dict["value"]:
+                                    st.session_state.age_claim = claim_dict
+                                    st.rerun()
+                                else:
+                                    st.error("Acesso Negado: Sistema restrito para maiores de 18 anos.")
+                            else:
+                                st.error(f"Rosto não detectado ou erro na leitura: {output.get('error')}")
+
+                    except subprocess.TimeoutExpired:
+                        st.error("Tempo limite excedido na verificação biométrica. Tente novamente.")
+                    except (json.JSONDecodeError, IndexError):
+                        st.error("Resposta inesperada do processo de verificação biométrica.")
         else:
             st.success(f"Maioridade Confirmada! (Idade est. {st.session_state.age_claim['estimated_age']} anos)")
 
@@ -140,7 +159,7 @@ else:
         consent_payload = {"allow_rag": allow_rag, "did": st.session_state.identidade["did"]}
 
         with st.chat_message("assistant"):
-            with st.spinner("Validando consentimento e gerando resposta (Isso pode levar alguns minutos)..."):
+            with st.spinner("Validando consentimento e gerando resposta (Isso pode levar alguns segundos)..."):
                 resposta = rag_system.query_with_consent(
                     question=prompt,
                     did_user=st.session_state.identidade["did"],
@@ -151,3 +170,4 @@ else:
                 st.markdown(resposta)
         
         st.session_state.messages.append({"role": "assistant", "content": resposta})
+        

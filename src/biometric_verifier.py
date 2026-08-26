@@ -23,8 +23,8 @@ class AgeAnalysisError(Exception):
 @dataclass
 class AgeClaim:
     """
-    Alegação etária, para ser assinada 
-    digitalmente pelo módulo `crypto_did.py`.
+    Alegação etária, pronta para ser assinada digitalmente pelo
+    módulo `crypto_did.py`.
     """
 
     did_subject: Optional[str]
@@ -66,7 +66,7 @@ class BiometricVerifier:
         """
         Captura um único frame da webcam local usando OpenCV.
         """
-        import cv2  # import local: só é necessário quando de fato há captura de webcam
+        import cv2  # lazy
 
         cap = cv2.VideoCapture(camera_index)
         if not cap.isOpened():
@@ -74,7 +74,6 @@ class BiometricVerifier:
 
         try:
             frame = None
-
             for _ in range(max(warmup_frames, 1)):
                 ok, frame = cap.read()
                 if not ok:
@@ -101,7 +100,7 @@ class BiometricVerifier:
             raise AgeAnalysisError(
                 "Nenhum rosto detectado na imagem capturada. Tente novamente com melhor iluminação."
             ) from exc
-        except Exception as exc:
+        except Exception as exc:  # failsafe falhas do modelo/backend não devem derrubar a aplicação
             raise AgeAnalysisError(f"Falha ao executar a inferência de idade: {exc}") from exc
         finally:
             del image
@@ -132,7 +131,7 @@ class BiometricVerifier:
         try:
             estimated_age = self._run_inference(frame)
         finally:
-            frame = None
+            frame = None  # remove a última referência à imagem capturada
 
         return self._build_claim(estimated_age, did_subject)
 
@@ -142,12 +141,13 @@ class BiometricVerifier:
 
     def verify_age_from_array(self, image_array, did_subject: Optional[str] = None) -> AgeClaim:
         """
-        Recebe um array numpy, executa a inferência local e descarta a imagem.
+        Recebe um array numpy (imagem carregada em memória via Streamlit),
+        executa a inferência local e descarta a imagem.
         """
         logger.info("Executando inferência de idade 100%% local a partir do array em memória...")
         try:
             estimated_age = self._run_inference(image_array)
         finally:
-            image_array = None
+            image_array = None  # remove a referência à imagem imediatamente
 
         return self._build_claim(estimated_age, did_subject)

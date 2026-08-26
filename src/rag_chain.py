@@ -8,6 +8,9 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.documents import Document
+from langchain.retrievers import EnsembleRetriever
+from langchain_community.retrievers import BM25Retriever
 
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
@@ -20,9 +23,11 @@ class SecureRAG:
         self.persist_directory = persist_directory
         
         self.embedding_model = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            # model_kwargs={"device": "cuda"},  # descomente se houver GPU NVIDIA disponivel
         )
-        self.llm = ChatOllama(model="llama3")
+
+        self.llm = ChatOllama(model="llama3", num_ctx=8192, temperature=0.1, num_predict=512)
         self.vector_store = None
         
         self.prompt = PromptTemplate.from_template(
@@ -59,6 +64,7 @@ class SecureRAG:
             
         logger.info("Lendo e vetorizando documentos do zero. Isso pode demorar...")
         
+        # Garante que o diretorio de documentos exista
         if not os.path.exists(self.docs_path):
             os.makedirs(self.docs_path)
             
@@ -68,6 +74,8 @@ class SecureRAG:
         
         pdf_loader = DirectoryLoader(self.docs_path, glob="**/*.pdf", loader_cls=PyPDFLoader)
         pdf_docs = pdf_loader.load()
+
+        # TO DO: Implementar csv se houver tempo
         
         documents = txt_docs + pdf_docs
         
@@ -75,9 +83,10 @@ class SecureRAG:
             logger.warning("Nenhum documento encontrado na pasta.")
             return False
             
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=6000, chunk_overlap=400)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
         chunks = text_splitter.split_documents(documents)
         
+        # Criar e persistir o banco vetorial
         self.vector_store = Chroma.from_documents(
             documents=chunks, 
             embedding=self.embedding_model, 
@@ -119,6 +128,7 @@ class SecureRAG:
         if not self._verify_consent(did_user, public_key, signature, consent_payload):
             return "Acesso Negado: Falha na validação do consentimento criptográfico. O acesso aos seus dados foi bloqueado."
 
+        # Prepara o Banco Vetorial e o Retriever
         if not self.vector_store:
             self.vector_store = Chroma(
                 persist_directory=self.persist_directory, 
@@ -129,15 +139,24 @@ class SecureRAG:
         if not all_data['documents']:
             return "O banco de dados está vazio. Por favor, adicione documentos e atualize a base."
 
-        retriever = self.vector_store.as_retriever(
+        vector_retriever = self.vector_store.as_retriever(
             search_type="mmr", 
-            search_kwargs={"k": 30, "fetch_k": 150}
+            search_kwargs={"k": 5, "fetch_k": 20}
+        )
+
+        documents = [Document(page_content=text) for text in all_data['documents']]
+        bm25_retriever = BM25Retriever.from_documents(documents)
+        bm25_retriever.k = 5
+
+        hybrid_retriever = EnsembleRetriever(
+            retrievers=[vector_retriever, bm25_retriever],
+            weights=[0.6, 0.4]
         )
 
         def format_docs(docs):
             text_chunks = []
             print("\n" + "="*50)
-            print("DEBUG DO RETRIEVER")
+            print("DEBUG DO RETRIEVER: O QUE A IA ESTÁ LENDO?")
             print("="*50)
             
             for i, doc in enumerate(docs):
@@ -149,7 +168,7 @@ class SecureRAG:
             return "\n\n".join(text_chunks)
 
         rag_chain = (
-            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            {"context": hybrid_retriever | format_docs, "question": RunnablePassthrough()}
             | self.prompt
             | self.llm
             | StrOutputParser()
@@ -157,3 +176,4 @@ class SecureRAG:
 
         logger.info("Consentimento aprovado. Recuperando contexto e gerando resposta local...")
         return rag_chain.invoke(question)
+    
