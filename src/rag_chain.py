@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime, timezone
 from langchain_community.document_loaders import DirectoryLoader, TextLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
@@ -110,6 +111,21 @@ class SecureRAG:
         if not allow_rag:
             logger.warning("Bloqueio de Privacidade: O usuário NÃO autorizou o uso do RAG.")
             return False
+
+        expires_at_str = consent_payload.get("expires_at")
+        if expires_at_str:
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > expires_at:
+                    logger.warning("Bloqueio de Segurança: Consentimento expirado. Reautorize na barra lateral.")
+                    return False
+            except ValueError:
+                logger.error("Bloqueio de Segurança: Campo 'expires_at' malformado no consentimento.")
+                return False
+        else:
+            logger.warning("Consentimento sem 'expires_at'.")
 
         is_valid = CryptoDID.verify_signature(
             public_key_b64=public_key,
