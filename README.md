@@ -15,18 +15,22 @@ Esta Prova de Conceito (PoC) tem como objetivo demonstrar a aplicação do *soft
 
 ## Arquitetura e Fluxo de Dados
 
-O processo está dividido em 4 etapas lineares:
+O processo está dividido em 5 etapas lineares (ver [`docs/arquitetura.md`](docs/arquitetura.md) para o detalhamento técnico completo, com diagramas):
 
-1. **Captura e Validação Etária (`DeepFace`):** A câmera local captura a imagem do usuário, o modelo de Visão Computacional infere a faixa etária e a imagem é imediatamente descartada da memória.
-2. **Geração de DID e Assinatura (`cryptography`):** É gerado o par de chaves (pública e privada) na máquina do usuário, criando o DID local e gerando um arquivo de consentimento assinado digitalmente.
-3. **Processamento RAG e Trava Lógica (`LangChain` + `ChromaDB` + `Ollama`):** O banco de dados vetorial carrega o documento de texto local. A rotina de busca de contexto (*retrieval*) do LLM executa uma verificação da assinatura do consentimento antes de liberar as informações para a resposta do modelo.
-4. **Exportação Estruturada (`JSON`):** O usuário pode exportar um arquivo `.json` interoperável contendo sua credencial, seu DID e o histórico de permissões concedidas.
+1. **Geração ou Restauração de DID (`cryptography`):** Na primeira execução, é gerado um par de chaves Ed25519 localmente, criando o DID do usuário; opcionalmente, a chave privada pode ser salva em um keystore local criptografado (PBKDF2 + Fernet) protegido por senha, para reuso em sessões futuras.
+2. **Captura e Validação Etária em Processo Isolado (`DeepFace`):** A câmera local captura a imagem do usuário; a inferência de idade roda em um **subprocesso dedicado** (`biometric_worker.py`), que carrega o TensorFlow/DeepFace, retorna apenas a alegação booleana com a idade estimada, e é encerrado liberando toda a memória do TensorFlow antes de o usuário começar a conversar com o RAG. A imagem em si nunca é persistida em disco.
+3. **Assinatura de Consentimento com Expiração:** O termo de consentimento (`allow_rag`, `did`, `issued_at`, `expires_at`) é assinado digitalmente com a chave privada do usuário. O consentimento tem validade de 15 minutos por padrão, mitigando reuso indevido (*replay*) de uma assinatura antiga.
+4. **Processamento RAG e Trava Lógica (`LangChain` + `ChromaDB` + `Ollama`):** O banco de dados vetorial local é consultado por uma **busca híbrida** (vetorial + BM25) apenas após a rotina `_verify_consent` validar criptograficamente a assinatura, a autorização e a validade temporal do consentimento.
+5. **Exportação Estruturada (`JSON`):** O usuário pode exportar uma credencial `.json` alinhada ao modelo de dados de *Verifiable Credentials* do W3C, contendo seu DID, a alegação etária e o histórico de permissões concedidas.
 
 ---
 
 ## Documentação
 
-- Item
+- [`docs/arquitetura.md`](docs/arquitetura.md): detalhamento técnico da arquitetura, dos módulos e do fluxo de dados (com diagramas).
+- [`docs/otimizacoes-e-aprendizados.md`](docs/otimizacoes-e-aprendizados.md): problemas de precisão, performance e usabilidade enfrentados durante o desenvolvimento, e como foram resolvidos.
+- [`docs/avaliacao-ssi.md`](docs/avaliacao-ssi.md): avaliação da PoC frente aos 11 princípios de Identidade Autossoberana (Allen / Stokkink & Pouwelse, via van Bokkem et al.).
+- [`docs/historias-de-usuario.md`](docs/historias-de-usuario.md): histórias de usuário (US01-US07) que orientaram os requisitos da PoC.
 
 ---
 
@@ -37,21 +41,23 @@ O repositório segue a seguinte estrutura:
 ```text
 root/
 │
-├── .github/
-│   └── workflows/              # Workflow de verificação do repositório
-│
 ├── data/
-│   ├── documentos/             # Documentos locais (.txt) para ingestão no RAG
-│   └── export/                 # Pasta de destino das identidades exportadas em .json
+│   ├── documentos/             # Documentos locais (.txt/.pdf) para ingestão no RAG
+│   ├── chroma_db/               # Banco vetorial persistido (ChromaDB, git-ignorado)
+│   └── keystore/                 # Keystore criptografado da identidade (git-ignorado)
 │
 ├── docs/
-│   └── dicionario-requisitos.md# Detalhamento do mapeamento do SIG e DIDs
+│   ├── historias-de-usuario.md
+│   ├── arquitetura.md              # Detalhamento técnico da arquitetura
+│   └── otimizacoes-e-aprendizados.md  # Histórico de problemas e soluções
 │
 ├── src/
 │   ├── app.py                  # Aplicação principal e interface visual em Streamlit
 │   ├── biometric_verifier.py   # Módulo de visão computacional (DeepFace/OpenCV)
-│   ├── crypto_did.py           # Módulo criptográfico (geração de DIDs e assinaturas)
-│   └── rag_chain.py            # Módulo do RAG, ChromaDB e integração com Ollama
+│   ├── biometric_worker.py     # Processo isolado que executa a verificação etária
+│   ├── crypto_did.py           # Módulo criptográfico (DIDs, assinaturas, keystore)
+│   ├── rag_chain.py            # Módulo do RAG, ChromaDB e integração com Ollama
+│   └── test/                   # Scripts de teste manual por módulo
 │
 ├── requirements.txt            # Dependências do projeto em Python
 └── README.md
@@ -72,12 +78,14 @@ python3 --version
 
 ```
 
-2. Instale e baixe o modelo local no Ollama (ex: Llama 3 ou Phi-3):
+2. Instale e baixe o modelo local no Ollama:
 
 ```bash
-ollama run llama3
+ollama pull llama3
 
 ```
+
+> A aplicação usa `num_ctx=8192` ao chamar o modelo (ver `docs/otimizacoes-e-aprendizados.md`). Se sua máquina tiver pouca RAM/VRAM, considere um modelo menor (ex.: `llama3.2:3b`) trocando o parâmetro `model` em `rag_chain.py`.
 
 3. Clone este repositório e navegue até a pasta do projeto:
 
@@ -120,16 +128,14 @@ streamlit run src/app.py
 
 Caso queira testar a execução isolada de cada etapa da solução sem a interface gráfica:
 
-1. Execute o módulo de validação biométrica:
-
 ```bash
-python3 src/biometric_verifier.py
+# Módulo de geração de DIDs, assinaturas e keystore
+python3 src/test/test_crypto_did.py
 
-```
+# Módulo de validação biométrica
+python3 src/test/test_biometric_verifier.py
 
-2. Execute o módulo de geração de DIDs e assinaturas:
-
-```bash
-python3 src/crypto_did.py
+# Módulo do RAG (ingestão + query)
+python3 src/test/test_rag_chain.py
 
 ```
