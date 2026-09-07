@@ -23,3 +23,6 @@ packaging<24.0
 protobuf<5.0.0
 wrapt<2.0.0
 tokenizers<0.21
+
+# Monitoramento
+psutil==7.2.2
