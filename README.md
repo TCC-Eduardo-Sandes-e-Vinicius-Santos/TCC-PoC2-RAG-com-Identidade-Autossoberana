@@ -29,7 +29,6 @@ O processo está dividido em 5 etapas lineares (ver [`docs/arquitetura.md`](docs
 
 - [`docs/arquitetura.md`](docs/arquitetura.md): detalhamento técnico da arquitetura, dos módulos e do fluxo de dados (com diagramas).
 - [`docs/otimizacoes-e-aprendizados.md`](docs/otimizacoes-e-aprendizados.md): problemas de precisão, performance e usabilidade enfrentados durante o desenvolvimento, e como foram resolvidos.
-- [`docs/avaliacao-ssi.md`](docs/avaliacao-ssi.md): avaliação da PoC frente aos 11 princípios de Identidade Autossoberana (Allen / Stokkink & Pouwelse, via van Bokkem et al.).
 - [`docs/historias-de-usuario.md`](docs/historias-de-usuario.md): histórias de usuário (US01-US07) que orientaram os requisitos da PoC.
 
 ---
