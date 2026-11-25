@@ -30,9 +30,9 @@ A metodologia adotada segue o padrão ágil, onde as histórias de usuário são
 
 #### Critérios de Aceitação
 
-[ ] O sistema deve gerar um par de chaves criptográficas (pública e privada) localmente utilizando bibliotecas nativas.
-[ ] O sistema não deve exigir o preenchimento de dados de contato (como e-mail ou telefone) nem a criação de senhas tradicionais.
-[ ] O identificador descentralizado (DID) gerado deve ser salvo de forma temporária ou persistente estritamente na máquina do usuário.
+- [ ] O sistema deve gerar um par de chaves criptográficas (pública e privada) localmente utilizando bibliotecas nativas.
+- [ ] O sistema não deve exigir o preenchimento de dados de contato (como e-mail ou telefone) nem a criação de senhas tradicionais.
+- [ ] O identificador descentralizado (DID) gerado deve ser salvo de forma temporária ou persistente estritamente na máquina do usuário.
 
 ---
 
@@ -42,11 +42,11 @@ A metodologia adotada segue o padrão ágil, onde as histórias de usuário são
 
 #### Critérios de Aceitação
 
-[ ] O sistema não deve ser acessível a menores de 18 anos.
-[ ] O sistema deve ser capaz de capturar uma imagem via webcam na interface do usuário.
-[ ] O sistema deve realizar a estimativa da idade rodando o modelo de visão computacional 100% localmente.
-[ ] A imagem capturada deve ser descartada da memória imediatamente após a extração da alegação "maior de idade".
-[ ] O sistema deve atestar o resultado associando a alegação etária ao DID gerado.
+- [ ] O sistema não deve ser acessível a menores de 18 anos.
+- [ ] O sistema deve ser capaz de capturar uma imagem via webcam na interface do usuário.
+- [ ] O sistema deve realizar a estimativa da idade rodando o modelo de visão computacional 100% localmente.
+- [ ] A imagem capturada deve ser descartada da memória imediatamente após a extração da alegação "maior de idade".
+- [ ] O sistema deve atestar o resultado associando a alegação etária ao DID gerado.
 
 ---
 
@@ -56,10 +56,10 @@ A metodologia adotada segue o padrão ágil, onde as histórias de usuário são
 
 #### Critérios de Aceitação
 
-[ ] Durante a criação da conta, o sistema deve prover um modal/tela com um formulário mostrando opções de como os dados do usuário podem ser usados.
-[ ] O consentimento deve ser transformado em um documento digital e assinado criptograficamente usando a chave privada do usuário.
-[ ] O sistema deve bloquear estritamente as ações da IA caso a assinatura criptográfica não seja gerada ou validada, respeitando as permissões estabelecidas.
-[ ] O sistema deve respeitar as permissões estabelecidas pelo usuário.
+- [ ] Durante a criação da conta, o sistema deve prover um modal/tela com um formulário mostrando opções de como os dados do usuário podem ser usados.
+- [ ] O consentimento deve ser transformado em um documento digital e assinado criptograficamente usando a chave privada do usuário.
+- [ ] O sistema deve bloquear estritamente as ações da IA caso a assinatura criptográfica não seja gerada ou validada, respeitando as permissões estabelecidas.
+- [ ] O sistema deve respeitar as permissões estabelecidas pelo usuário.
 
 ---
 
@@ -69,9 +69,9 @@ A metodologia adotada segue o padrão ágil, onde as histórias de usuário são
 
 #### Critérios de Aceitação
 
-[ ] A interface da aplicação deve ser hospedada em `localhost`.
-[ ] O processamento do modelo de linguagem (LLM) deve ocorrer localmente.
-[ ] Nenhuma chamada de API externa deve ser realizada para processar textos ou imagens.
+- [ ] A interface da aplicação deve ser hospedada em `localhost`.
+- [ ] O processamento do modelo de linguagem (LLM) deve ocorrer localmente.
+- [ ] Nenhuma chamada de API externa deve ser realizada para processar textos ou imagens.
 
 ---
 
@@ -81,9 +81,9 @@ A metodologia adotada segue o padrão ágil, onde as histórias de usuário são
 
 #### Critérios de Aceitação
 
-[ ] O sistema deve ler e vetorizar automaticamente os documentos locais de texto apontados e armazená-los no banco vetorial local.
-[ ] O fluxo de recuperação de informações (*retrieval*) só pode ser ativado caso a permissão (US03) tenha sido criptograficamente validada como "verdadeira".
-[ ] O LLM local deve construir a resposta final baseando-se estritamente no conteúdo extraído do banco vetorial.
+- [ ] O sistema deve ler e vetorizar automaticamente os documentos locais de texto apontados e armazená-los no banco vetorial local.
+- [ ] O fluxo de recuperação de informações (*retrieval*) só pode ser ativado caso a permissão (US03) tenha sido criptograficamente validada como "verdadeira".
+- [ ] O LLM local deve construir a resposta final baseando-se estritamente no conteúdo extraído do banco vetorial.
 
 ---
 
@@ -93,9 +93,9 @@ A metodologia adotada segue o padrão ágil, onde as histórias de usuário são
 
 #### Critérios de Aceitação
 
-[ ] O sistema deve consolidar o DID do usuário, o termo de permissões e a alegação de maioridade em um único arquivo de texto estruturado.
-[ ] O arquivo deve seguir a notação `.json` (idealmente assemelhando-se à estrutura de *Verifiable Credentials*).
-[ ] A interface deve disponibilizar um botão para realizar o download direto e imediato do arquivo gerado para a máquina do usuário.
+- [ ] O sistema deve consolidar o DID do usuário, o termo de permissões e a alegação de maioridade em um único arquivo de texto estruturado.
+- [ ] O arquivo deve seguir a notação `.json` (idealmente assemelhando-se à estrutura de *Verifiable Credentials*).
+- [ ] A interface deve disponibilizar um botão para realizar o download direto e imediato do arquivo gerado para a máquina do usuário.
 
 ---
 
@@ -105,4 +105,4 @@ A metodologia adotada segue o padrão ágil, onde as histórias de usuário são
 
 #### Critérios de Aceitação
 
-[ ] A interface deve apresentar um texto explicativo claro afirmando que a imagem da webcam não será salva em disco ou enviada para a nuvem, bem como outras informações relevantes.
+- [ ] A interface deve apresentar um texto explicativo claro afirmando que a imagem da webcam não será salva em disco ou enviada para a nuvem, bem como outras informações relevantes.
